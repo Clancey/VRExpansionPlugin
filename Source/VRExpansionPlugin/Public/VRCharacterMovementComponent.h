@@ -14,6 +14,7 @@
 class FDebugDisplayInfo;
 class ACharacter;
 class UVRCharacterMovementComponent;
+class AVRCharacter;
 
 /** Shared pointer for easy memory management of FSavedMove_Character, for accumulating and replaying network moves. */
 //typedef TSharedPtr<class FSavedMove_Character> FSavedMovePtr;
@@ -45,6 +46,23 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "VRCharacterMovementComponent")
 	bool bAllowWalkingThroughWalls;
 
+	// This is used because the relative capsule offset can be different by the time a move is sent to the server if the move is delayed.
+	// It generally doesn't matter with most movements, but for step up it can get stuck in a step up/down loop.....
+	// For more accuracy I should be sending the capsules location when the move was made instead.
+	// This is the faster hack to get it more stable (for now) that still has lower sent packet impact
+
+	// #FIXME Add capsule location to saved moves that are replicated to server, set capsule location on server after saved move is pulled
+	//		  Then remove this function totally, FSavedMove_VRCharacter, FNetworkPredictionData_Client_VRCharacter
+	bool bForceSendMovementThisFrame;
+	void ForceSendMovementThisFrame()
+	{
+		if (VRRootCapsule->bHadRelativeMovement)
+			bForceSendMovementThisFrame = true;
+	}
+
+	FNetworkPredictionData_Client* GetPredictionData_Client() const override;
+	FNetworkPredictionData_Server* GetPredictionData_Server() const override;
+
 	// Higher values will cause more slide but better step up
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "VRCharacterMovementComponent", meta = (ClampMin = "0.01", UIMin = "0", ClampMax = "1.0", UIMax = "1"))
 	float WallRepulsionMultiplier;
@@ -54,7 +72,6 @@ public:
 	 */
 	UVRCharacterMovementComponent(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
-	FVector GetImpartedMovementBaseVelocity() const override;
 	float ImmersionDepth() const override;
 	void VisualizeMovement() const override;
 	bool CanCrouch();
@@ -64,6 +81,15 @@ public:
 	{
 		return RootMotionParams.bHasRootMotion;
 	}*/
+
+	// Modify for correct location
+	void ApplyRepulsionForce(float DeltaSeconds) override;
+
+	// Update BaseOffset to be zero
+	void UpdateBasedMovement(float DeltaSeconds) override;
+
+	// Stop subtracting the capsules half height
+	FVector GetImpartedMovementBaseVelocity() const override;
 
 	// Cheating at the relative collision detection
 	void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction *ThisTickFunction);
@@ -75,6 +101,7 @@ public:
 	void ReplicateMoveToServer(float DeltaTime, const FVector& NewAcceleration) override;
 
 	// Always called with the capsulecomponent location, no idea why it doesn't just get it inside it already
+	// Had to force it within the function to use VRLocation instead.
 	void FindFloor(const FVector& CapsuleLocation, FFindFloorResult& OutFloorResult, bool bZeroDelta, const FHitResult* DownwardSweepResult) const override;
 
 	// Need to use actual capsule location for step up
@@ -91,12 +118,57 @@ public:
 		const struct FCollisionResponseParams& ResponseParam
 		) const override;
 
-	// Don't need this anymore, took care of throwing out the physics step in the movement function
-	// Don't step up on physics actors
-	//virtual bool CanStepUp(const FHitResult& Hit) const override;
-
 	// Multiple changes to support relative motion and ledge sweeps
 	void PhysWalking(float deltaTime, int32 Iterations);
 
 };
 
+
+class VREXPANSIONPLUGIN_API FSavedMove_VRCharacter : public FSavedMove_Character
+{
+
+public:
+
+	FVector VRCapsuleLocation;
+
+	void Clear();
+	virtual void SetInitialPosition(ACharacter* C);
+
+	FSavedMove_VRCharacter()
+	{
+		VRCapsuleLocation = FVector::ZeroVector;
+	}
+};
+
+// Need this for capsule location replication
+class VREXPANSIONPLUGIN_API FNetworkPredictionData_Client_VRCharacter : public FNetworkPredictionData_Client_Character
+{
+public:
+	FNetworkPredictionData_Client_VRCharacter(const UCharacterMovementComponent& ClientMovement)
+		: FNetworkPredictionData_Client_Character(ClientMovement)
+	{
+
+	}
+
+	FSavedMovePtr AllocateNewMove()
+	{
+		return FSavedMovePtr(new FSavedMove_VRCharacter());
+	}
+};
+
+
+// Need this for capsule location replication?????
+class VREXPANSIONPLUGIN_API FNetworkPredictionData_Server_VRCharacter : public FNetworkPredictionData_Server_Character
+{
+public:
+	FNetworkPredictionData_Server_VRCharacter(const UCharacterMovementComponent& ClientMovement)
+		: FNetworkPredictionData_Server_Character(ClientMovement)
+	{
+
+	}
+
+	FSavedMovePtr AllocateNewMove()
+	{
+		return FSavedMovePtr(new FSavedMove_VRCharacter());
+	}
+};

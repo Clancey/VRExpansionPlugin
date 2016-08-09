@@ -51,9 +51,58 @@ namespace CharacterMovementComponentStatics
 	static const FName ImmersionDepthName = FName(TEXT("MovementComp_Character_ImmersionDepth"));
 }
 
+FNetworkPredictionData_Client* UVRCharacterMovementComponent::GetPredictionData_Client() const
+{
+	// Should only be called on client or listen server (for remote clients) in network games
+	check(CharacterOwner != NULL);
+	checkSlow(CharacterOwner->Role < ROLE_Authority || (CharacterOwner->GetRemoteRole() == ROLE_AutonomousProxy && GetNetMode() == NM_ListenServer));
+	checkSlow(GetNetMode() == NM_Client || GetNetMode() == NM_ListenServer);
+
+	if (!ClientPredictionData)
+	{
+		UVRCharacterMovementComponent* MutableThis = const_cast<UVRCharacterMovementComponent*>(this);
+		MutableThis->ClientPredictionData = new FNetworkPredictionData_Client_VRCharacter(*this);
+	}
+
+	return ClientPredictionData;
+}
+
+FNetworkPredictionData_Server* UVRCharacterMovementComponent::GetPredictionData_Server() const
+{
+	// Should only be called on server in network games
+	check(CharacterOwner != NULL);
+	check(CharacterOwner->Role == ROLE_Authority);
+	checkSlow(GetNetMode() < NM_Client);
+
+	if (!ServerPredictionData)
+	{
+		UVRCharacterMovementComponent* MutableThis = const_cast<UVRCharacterMovementComponent*>(this);
+		MutableThis->ServerPredictionData = new FNetworkPredictionData_Server_VRCharacter(*this);
+	}
+
+	return ServerPredictionData;
+}
 
 
+void FSavedMove_VRCharacter::Clear()
+{
+	VRCapsuleLocation = FVector::ZeroVector;
 
+	FSavedMove_Character::Clear();
+}
+
+void FSavedMove_VRCharacter::SetInitialPosition(ACharacter* C)
+{
+	// See if we can get the VR capsule location
+	if (AVRCharacter * VRC = Cast<AVRCharacter>(C))
+	{
+		if (VRC->VRRootReference)
+			VRCapsuleLocation = VRC->VRRootReference->GetVRLocation();
+		else
+			VRCapsuleLocation = C->GetActorLocation();
+	}
+	FSavedMove_Character::SetInitialPosition(C);
+}
 /*
 *
 *
@@ -68,6 +117,7 @@ namespace CharacterMovementComponentStatics
 // CROUCH functions need an overhaul
 // NAVIGATION functions need an overhaul or to be removed entirely
 // void UCharacterMovementComponent::ApplyRepulsionForce(float DeltaSeconds) ???? check for capsule hit location being correct
+
 
 
 void UVRCharacterMovementComponent::PhysWalking(float deltaTime, int32 Iterations)
@@ -537,7 +587,7 @@ void UVRCharacterMovementComponent::ReplicateMoveToServer(float DeltaTime, const
 
 		const bool bCanDelayMove = (CVarNetEnableMoveCombining->GetValueOnGameThread() != 0) && CanDelaySendingMove(NewMove);
 
-		if (bCanDelayMove && ClientData->PendingMove.IsValid() == false)
+		if (!bForceSendMovementThisFrame && bCanDelayMove && ClientData->PendingMove.IsValid() == false)
 		{
 			// Decide whether to hold off on move
 			// send moves more frequently in small games where server isn't likely to be saturated
@@ -599,7 +649,7 @@ UVRCharacterMovementComponent::UVRCharacterMovementComponent(const FObjectInitia
 
 	// Keep this false
 	this->bTickBeforeOwner = false;
-
+	bForceSendMovementThisFrame = false;
 	WallRepulsionMultiplier = 0.12f;
 
 	bAllowWalkingThroughWalls = false;
@@ -608,32 +658,31 @@ UVRCharacterMovementComponent::UVRCharacterMovementComponent(const FObjectInitia
 
 void UVRCharacterMovementComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction *ThisTickFunction)
 {
-	if (VRRootCapsule && VRRootCapsule->bHadRelativeMovement && CharacterOwner->Role > ROLE_SimulatedProxy)
+	if (VRRootCapsule && VRRootCapsule->bHadRelativeMovement && CharacterOwner->IsLocallyControlled())
 	{
-		bForceNextFloorCheck = true;
+		//bForceNextFloorCheck = true;
 
-		if (CharacterOwner->IsLocallyControlled())
+		if (!bAllowWalkingThroughWalls)
 		{
-			if (!bAllowWalkingThroughWalls)
-			{
-				// Fake movement was too sketchy, going to find a different solution.
-				//AddInputVector(VRRootCapsule->DifferenceFromLastFrame * 0.0008f);
-				FHitResult OutHit;
-				FCollisionQueryParams Params("RelativeMovementSweep", false, VRRootCapsule->GetOwner());
-				FCollisionResponseParams ResponseParam;
-				VRRootCapsule->InitSweepCollisionParams(Params, ResponseParam);
-				bool bBlockingHit = GetWorld()->SweepSingleByChannel(OutHit, VRRootCapsule->GetVRLocation(), VRRootCapsule->GetVRLocation() + VRRootCapsule->DifferenceFromLastFrame, FQuat(0.0f, 0.0f, 0.0f, 1.0f), VRRootCapsule->GetCollisionObjectType(), VRRootCapsule->GetCollisionShape(), Params, ResponseParam);
+			// Fake movement is too sketchy, going to find a different solution.
+			// For now am also forcing move packets to be sent when trying to step up on something (in step up function)
 
-				// If we had a valid blocking hit
-				if (OutHit.Component.IsValid() && !OutHit.Component->IsSimulatingPhysics())
+			FHitResult OutHit;
+			FCollisionQueryParams Params("RelativeMovementSweep", false, VRRootCapsule->GetOwner());
+			FCollisionResponseParams ResponseParam;
+			VRRootCapsule->InitSweepCollisionParams(Params, ResponseParam);
+			bool bBlockingHit = GetWorld()->SweepSingleByChannel(OutHit, VRRootCapsule->GetVRLocation(), VRRootCapsule->GetVRLocation() + VRRootCapsule->DifferenceFromLastFrame, FQuat(0.0f, 0.0f, 0.0f, 1.0f), VRRootCapsule->GetCollisionObjectType(), VRRootCapsule->GetCollisionShape(), Params, ResponseParam);
+
+			// If we had a valid blocking hit
+			if (OutHit.Component.IsValid() && !OutHit.Component->IsSimulatingPhysics())
+			{
+				if (bBlockingHit) // Cancel for simulating physics on the component
 				{
-					if (bBlockingHit /*&& OutHit.IsValidBlockingHit()*/) // Cancel for simulating physics on the component
-					{
-						// Add the relative movement into the move for this frame to back us out and lower the strength to prevent sliding
-						AddInputVector(VRRootCapsule->DifferenceFromLastFrame * WallRepulsionMultiplier);
-					}
+					// Add the relative movement into the move for this frame to back us out and lower the strength to prevent sliding
+					AddInputVector(VRRootCapsule->DifferenceFromLastFrame * WallRepulsionMultiplier);
 				}
 			}
+				
 		}
 	}
 
@@ -646,50 +695,120 @@ bool UVRCharacterMovementComponent::CanCrouch()
 	return false;
 }
 
-// REMOVE ME - After testing, shouldn't be needed anymore, but make sure
-/*bool UVRCharacterMovementComponent::CanStepUp(const FHitResult& Hit) const
+
+void UVRCharacterMovementComponent::ApplyRepulsionForce(float DeltaSeconds)
 {
-	if (!Hit.IsValidBlockingHit() || !HasValidData() || MovementMode == MOVE_Falling )
+	if (UpdatedPrimitive && RepulsionForce > 0.0f)
 	{
-		return false;
+		const TArray<FOverlapInfo>& Overlaps = UpdatedPrimitive->GetOverlapInfos();
+		if (Overlaps.Num() > 0)
+		{
+			FCollisionQueryParams QueryParams;
+			QueryParams.bReturnFaceIndex = false;
+			QueryParams.bReturnPhysicalMaterial = false;
+
+			float CapsuleRadius = 0.f;
+			float CapsuleHalfHeight = 0.f;
+			CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleSize(CapsuleRadius, CapsuleHalfHeight);
+			const float RepulsionForceRadius = CapsuleRadius * 1.2f;
+			const float StopBodyDistance = 2.5f;
+			FVector MyLocation;
+			
+			if (VRRootCapsule)
+				MyLocation = VRRootCapsule->GetVRLocation();
+			else
+				MyLocation = UpdatedPrimitive->GetComponentLocation();
+
+			for (int32 i = 0; i < Overlaps.Num(); i++)
+			{
+				const FOverlapInfo& Overlap = Overlaps[i];
+
+				UPrimitiveComponent* OverlapComp = Overlap.OverlapInfo.Component.Get();
+				if (!OverlapComp || OverlapComp->Mobility < EComponentMobility::Movable)
+				{
+					continue;
+				}
+
+				// Use the body instead of the component for cases where we have multi-body overlaps enabled
+				FBodyInstance* OverlapBody = nullptr;
+				const int32 OverlapBodyIndex = Overlap.GetBodyIndex();
+				const USkeletalMeshComponent* SkelMeshForBody = (OverlapBodyIndex != INDEX_NONE) ? Cast<USkeletalMeshComponent>(OverlapComp) : nullptr;
+				if (SkelMeshForBody != nullptr)
+				{
+					OverlapBody = SkelMeshForBody->Bodies.IsValidIndex(OverlapBodyIndex) ? SkelMeshForBody->Bodies[OverlapBodyIndex] : nullptr;
+				}
+				else
+				{
+					OverlapBody = OverlapComp->GetBodyInstance();
+				}
+
+				if (!OverlapBody)
+				{
+					UE_LOG(LogCharacterMovement, Warning, TEXT("%s could not find overlap body for body index %d"), *GetName(), OverlapBodyIndex);
+					continue;
+				}
+
+				// Early out if this is not a destructible and the body is not simulated
+				if (!OverlapBody->IsInstanceSimulatingPhysics() && !Cast<UDestructibleComponent>(OverlapComp))
+				{
+					continue;
+				}
+
+				FTransform BodyTransform = OverlapBody->GetUnrealWorldTransform();
+
+				FVector BodyVelocity = OverlapBody->GetUnrealWorldVelocity();
+				FVector BodyLocation = BodyTransform.GetLocation();
+
+				// Trace to get the hit location on the capsule
+				FHitResult Hit;
+				bool bHasHit = UpdatedPrimitive->LineTraceComponent(Hit, BodyLocation,
+					FVector(MyLocation.X, MyLocation.Y, BodyLocation.Z),
+					QueryParams);
+
+				FVector HitLoc = Hit.ImpactPoint;
+				bool bIsPenetrating = Hit.bStartPenetrating || Hit.PenetrationDepth > StopBodyDistance;
+
+				// If we didn't hit the capsule, we're inside the capsule
+				if (!bHasHit)
+				{
+					HitLoc = BodyLocation;
+					bIsPenetrating = true;
+				}
+
+				const float DistanceNow = (HitLoc - BodyLocation).SizeSquared2D();
+				const float DistanceLater = (HitLoc - (BodyLocation + BodyVelocity * DeltaSeconds)).SizeSquared2D();
+
+				if (bHasHit && DistanceNow < StopBodyDistance && !bIsPenetrating)
+				{
+					OverlapBody->SetLinearVelocity(FVector(0.0f, 0.0f, 0.0f), false);
+				}
+				else if (DistanceLater <= DistanceNow || bIsPenetrating)
+				{
+					FVector ForceCenter = MyLocation;
+
+					if (bHasHit)
+					{
+						ForceCenter.Z = HitLoc.Z;
+					}
+					else
+					{
+						ForceCenter.Z = FMath::Clamp(BodyLocation.Z, MyLocation.Z - CapsuleHalfHeight, MyLocation.Z + CapsuleHalfHeight);
+					}
+
+					OverlapBody->AddRadialForceToBody(ForceCenter, RepulsionForceRadius, RepulsionForce * Mass, ERadialImpulseFalloff::RIF_Constant);
+				}
+			}
+		}
 	}
+}
 
-	// No component for "fake" hits when we are on a known good base.
-	const UPrimitiveComponent* HitComponent = Hit.Component.Get();
-	if (!HitComponent)
-	{
-		return true;
-	}
-
-	if (HitComponent->IsSimulatingPhysics())
-		return false;
-
-	if (!HitComponent->CanCharacterStepUp(CharacterOwner))
-	{
-		return false;
-	}
-
-	// No actor for "fake" hits when we are on a known good base.
-	const AActor* HitActor = Hit.GetActor();
-	if (!HitActor)
-	{
-		return true;
-	}
-
-	if (!HitActor->CanBeBaseForCharacter(CharacterOwner))
-	{
-		return false;
-	}
-
-	return true;
-}*/
 
 void UVRCharacterMovementComponent::SetUpdatedComponent(USceneComponent* NewUpdatedComponent)
 {
 	Super::SetUpdatedComponent(NewUpdatedComponent);
 
 	if (UpdatedComponent)
-	{
+	{	
 		VRRootCapsule = Cast<UVRRootComponent>(UpdatedComponent);
 
 		// Stop the tick forcing
@@ -703,6 +822,10 @@ void UVRCharacterMovementComponent::SetUpdatedComponent(USceneComponent* NewUpda
 
 bool UVRCharacterMovementComponent::StepUp(const FVector& GravDir, const FVector& Delta, const FHitResult &InHit, FStepDownResult* OutStepDownResult)
 {
+//	UE_LOG(LogTemp, Warning, TEXT("Stepup"));
+	//return Super::StepUp(GravDir, Delta, InHit, OutStepDownResult);
+
+
 	SCOPE_CYCLE_COUNTER(STAT_CharStepUp);
 
 	if (!CanStepUp(InHit) || MaxStepHeight <= 0.f)
@@ -722,7 +845,7 @@ bool UVRCharacterMovementComponent::StepUp(const FVector& GravDir, const FVector
 
 	// Don't bother stepping up if top of capsule is hitting something.
 	const float InitialImpactZ = InHit.ImpactPoint.Z;
-	if (InitialImpactZ > OldLocation.Z + (PawnHalfHeight/**2*/ - PawnRadius))
+	if (InitialImpactZ > OldLocation.Z + (PawnHalfHeight - PawnRadius))
 	{
 		return false;
 	}
@@ -808,6 +931,7 @@ bool UVRCharacterMovementComponent::StepUp(const FVector& GravDir, const FVector
 		HandleImpact(Hit);
 		if (IsFalling())
 		{
+			ForceSendMovementThisFrame();
 			return true;
 		}
 
@@ -920,14 +1044,184 @@ bool UVRCharacterMovementComponent::StepUp(const FVector& GravDir, const FVector
 	// Don't recalculate velocity based on this height adjustment, if considering vertical adjustments.
 	bJustTeleported |= !bMaintainHorizontalGroundVelocity;
 
+
+	ForceSendMovementThisFrame();
 	return true;
 }
+
+void UVRCharacterMovementComponent::UpdateBasedMovement(float DeltaSeconds)
+{
+	if (!HasValidData())
+	{
+		return;
+	}
+
+	const UPrimitiveComponent* MovementBase = CharacterOwner->GetMovementBase();
+	if (!MovementBaseUtility::UseRelativeLocation(MovementBase))
+	{
+		return;
+	}
+
+	if (!IsValid(MovementBase) || !IsValid(MovementBase->GetOwner()))
+	{
+		SetBase(NULL);
+		return;
+	}
+
+	// Ignore collision with bases during these movements.
+	TGuardValue<EMoveComponentFlags> ScopedFlagRestore(MoveComponentFlags, MoveComponentFlags | MOVECOMP_IgnoreBases);
+
+	FQuat DeltaQuat = FQuat::Identity;
+	FVector DeltaPosition = FVector::ZeroVector;
+
+	FQuat NewBaseQuat;
+	FVector NewBaseLocation;
+	if (!MovementBaseUtility::GetMovementBaseTransform(MovementBase, CharacterOwner->GetBasedMovement().BoneName, NewBaseLocation, NewBaseQuat))
+	{
+		return;
+	}
+
+	// Find change in rotation
+	const bool bRotationChanged = !OldBaseQuat.Equals(NewBaseQuat, 1e-8f);
+	if (bRotationChanged)
+	{
+		DeltaQuat = NewBaseQuat * OldBaseQuat.Inverse();
+	}
+
+	// only if base moved
+	if (bRotationChanged || (OldBaseLocation != NewBaseLocation))
+	{
+		// Calculate new transform matrix of base actor (ignoring scale).
+		const FQuatRotationTranslationMatrix OldLocalToWorld(OldBaseQuat, OldBaseLocation);
+		const FQuatRotationTranslationMatrix NewLocalToWorld(NewBaseQuat, NewBaseLocation);
+
+		if (CharacterOwner->IsMatineeControlled())
+		{
+			FRotationTranslationMatrix HardRelMatrix(CharacterOwner->GetBasedMovement().Rotation, CharacterOwner->GetBasedMovement().Location);
+			const FMatrix NewWorldTM = HardRelMatrix * NewLocalToWorld;
+			const FQuat NewWorldRot = bIgnoreBaseRotation ? UpdatedComponent->GetComponentQuat() : NewWorldTM.ToQuat();
+			MoveUpdatedComponent(NewWorldTM.GetOrigin() - UpdatedComponent->GetComponentLocation(), NewWorldRot, true);
+		}
+		else
+		{
+			FQuat FinalQuat = UpdatedComponent->GetComponentQuat();
+
+			if (bRotationChanged && !bIgnoreBaseRotation)
+			{
+				// Apply change in rotation and pipe through FaceRotation to maintain axis restrictions
+				const FQuat PawnOldQuat = UpdatedComponent->GetComponentQuat();
+				const FQuat TargetQuat = DeltaQuat * FinalQuat;
+				FRotator TargetRotator(TargetQuat);
+				CharacterOwner->FaceRotation(TargetRotator, 0.f);
+				FinalQuat = UpdatedComponent->GetComponentQuat();
+
+				if (PawnOldQuat.Equals(FinalQuat, 1e-6f))
+				{
+					// Nothing changed. This means we probably are using another rotation mechanism (bOrientToMovement etc). We should still follow the base object.
+					// @todo: This assumes only Yaw is used, currently a valid assumption. This is the only reason FaceRotation() is used above really, aside from being a virtual hook.
+					if (bOrientRotationToMovement || (bUseControllerDesiredRotation && CharacterOwner->Controller))
+					{
+						TargetRotator.Pitch = 0.f;
+						TargetRotator.Roll = 0.f;
+						MoveUpdatedComponent(FVector::ZeroVector, TargetRotator, false);
+						FinalQuat = UpdatedComponent->GetComponentQuat();
+					}
+				}
+
+				// Pipe through ControlRotation, to affect camera.
+				if (CharacterOwner->Controller)
+				{
+					const FQuat PawnDeltaRotation = FinalQuat * PawnOldQuat.Inverse();
+					FRotator FinalRotation = FinalQuat.Rotator();
+					UpdateBasedRotation(FinalRotation, PawnDeltaRotation.Rotator());
+					FinalQuat = UpdatedComponent->GetComponentQuat();
+				}
+			}
+
+			// We need to offset the base of the character here, not its origin, so offset by half height
+			float HalfHeight, Radius;
+			CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleSize(Radius, HalfHeight);
+
+			FVector const BaseOffset(0.0f, 0.0f, 0.0f);//(0.0f, 0.0f, HalfHeight);
+			FVector const LocalBasePos = OldLocalToWorld.InverseTransformPosition(UpdatedComponent->GetComponentLocation() - BaseOffset);
+			FVector const NewWorldPos = ConstrainLocationToPlane(NewLocalToWorld.TransformPosition(LocalBasePos) + BaseOffset);
+			DeltaPosition = ConstrainDirectionToPlane(NewWorldPos - UpdatedComponent->GetComponentLocation());
+
+			// move attached actor
+			if (bFastAttachedMove)
+			{
+				// we're trusting no other obstacle can prevent the move here
+				UpdatedComponent->SetWorldLocationAndRotation(NewWorldPos, FinalQuat, false);
+			}
+			else
+			{
+				// hack - transforms between local and world space introducing slight error FIXMESTEVE - discuss with engine team: just skip the transforms if no rotation?
+				FVector BaseMoveDelta = NewBaseLocation - OldBaseLocation;
+				if (!bRotationChanged && (BaseMoveDelta.X == 0.f) && (BaseMoveDelta.Y == 0.f))
+				{
+					DeltaPosition.X = 0.f;
+					DeltaPosition.Y = 0.f;
+				}
+
+				FHitResult MoveOnBaseHit(1.f);
+				const FVector OldLocation = UpdatedComponent->GetComponentLocation();
+				MoveUpdatedComponent(DeltaPosition, FinalQuat, true, &MoveOnBaseHit);
+				if ((UpdatedComponent->GetComponentLocation() - (OldLocation + DeltaPosition)).IsNearlyZero() == false)
+				{
+					OnUnableToFollowBaseMove(DeltaPosition, OldLocation, MoveOnBaseHit);
+				}
+			}
+		}
+
+		if (MovementBase->IsSimulatingPhysics() && CharacterOwner->GetMesh())
+		{
+			CharacterOwner->GetMesh()->ApplyDeltaToAllPhysicsTransforms(DeltaPosition, DeltaQuat);
+		}
+	}
+}
+
+FVector UVRCharacterMovementComponent::GetImpartedMovementBaseVelocity() const
+{
+	FVector Result = FVector::ZeroVector;
+	//return Result;
+	if (CharacterOwner)
+	{
+		UPrimitiveComponent* MovementBase = CharacterOwner->GetMovementBase();
+		if (MovementBaseUtility::IsDynamicBase(MovementBase))
+		{
+			FVector BaseVelocity = MovementBaseUtility::GetMovementBaseVelocity(MovementBase, CharacterOwner->GetBasedMovement().BoneName);
+
+			if (bImpartBaseAngularVelocity)
+			{
+				const FVector CharacterBasePosition = (UpdatedComponent->GetComponentLocation()/* - FVector(0.f, 0.f, CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight())*/);
+				const FVector BaseTangentialVel = MovementBaseUtility::GetMovementBaseTangentialVelocity(MovementBase, CharacterOwner->GetBasedMovement().BoneName, CharacterBasePosition);
+				BaseVelocity += BaseTangentialVel;
+			}
+
+			if (bImpartBaseVelocityX)
+			{
+				Result.X = BaseVelocity.X;
+			}
+			if (bImpartBaseVelocityY)
+			{
+				Result.Y = BaseVelocity.Y;
+			}
+			if (bImpartBaseVelocityZ)
+			{
+				Result.Z = BaseVelocity.Z;
+			}
+		}
+	}
+
+	return Result;
+}
+
 
 
 void UVRCharacterMovementComponent::FindFloor(const FVector& CapsuleLocation, FFindFloorResult& OutFloorResult, bool bZeroDelta, const FHitResult* DownwardSweepResult) const
 {
 	SCOPE_CYCLE_COUNTER(STAT_CharFindFloor);
-
+	//UE_LOG(LogTemp, Warning, TEXT("Find Floor"));
 	// No collision, no floor...
 	if (!HasValidData() || !UpdatedComponent->IsQueryCollisionEnabled())
 	{
@@ -1105,40 +1399,6 @@ bool UVRCharacterMovementComponent::FloorSweepTest(
 	return bBlockingHit;
 }
 
-FVector UVRCharacterMovementComponent::GetImpartedMovementBaseVelocity() const
-{
-	FVector Result = FVector::ZeroVector;
-	if (CharacterOwner)
-	{
-		UPrimitiveComponent* MovementBase = CharacterOwner->GetMovementBase();
-		if (MovementBaseUtility::IsDynamicBase(MovementBase))
-		{
-			FVector BaseVelocity = MovementBaseUtility::GetMovementBaseVelocity(MovementBase, CharacterOwner->GetBasedMovement().BoneName);
-
-			if (bImpartBaseAngularVelocity)
-			{
-				const FVector CharacterBasePosition = (UpdatedComponent->GetComponentLocation()/* - FVector(0.f, 0.f, CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight())*/);
-				const FVector BaseTangentialVel = MovementBaseUtility::GetMovementBaseTangentialVelocity(MovementBase, CharacterOwner->GetBasedMovement().BoneName, CharacterBasePosition);
-				BaseVelocity += BaseTangentialVel;
-			}
-
-			if (bImpartBaseVelocityX)
-			{
-				Result.X = BaseVelocity.X;
-			}
-			if (bImpartBaseVelocityY)
-			{
-				Result.Y = BaseVelocity.Y;
-			}
-			if (bImpartBaseVelocityZ)
-			{
-				Result.Z = BaseVelocity.Z;
-			}
-		}
-	}
-
-	return Result;
-}
 
 float UVRCharacterMovementComponent::ImmersionDepth() const
 {

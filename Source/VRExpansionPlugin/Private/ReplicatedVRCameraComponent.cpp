@@ -13,7 +13,6 @@ UReplicatedVRCameraComponent::UReplicatedVRCameraComponent(const FObjectInitiali
 
 	this->SetIsReplicated(true);
 	this->RelativeScale3D = FVector(1.0f, 1.0f, 1.0f);
-
 	// Default 100 htz update rate, same as the 100htz update rate of rep_notify, will be capped to 90/45 though because of vsync on HMD
 	//bReplicateTransform = true;
 	NetUpdateRate = 100.0f; // 100 htz is default
@@ -70,6 +69,7 @@ void UReplicatedVRCameraComponent::TickComponent(float DeltaTime, enum ELevelTic
 		if (GetNetMode() == NM_Client)	//if (bHasAuthority && bReplicateTransform)
 		{
 			NetUpdateCount += DeltaTime;
+
 			if (NetUpdateCount >= (1.0f / NetUpdateRate))
 			{
 				NetUpdateCount = 0.0f;
