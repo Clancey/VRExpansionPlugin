@@ -234,8 +234,10 @@ UVRRootComponent::UVRRootComponent(const FObjectInitializer& ObjectInitializer)
 	CapsuleHalfHeight = 96.0f;
 	bUseEditorCompositing = true;
 	OffsetComponentToWorld = FTransform(FQuat(0.0f,0.0f,0.0f,1.0f), FVector::ZeroVector, FVector(1.0f));
-	curCameraRot = FRotator(0.0f, 0.0f, 0.0f);// = FRotator::ZeroRotator;
-	curCameraLoc = FVector(0.0f, 0.0f, 0.0f);//FVector::ZeroVector;
+	lastCameraLoc = FVector::ZeroVector;
+	lastCameraRot = FRotator::ZeroRotator;
+	curCameraRot = FRotator::ZeroRotator;
+	curCameraLoc = FVector::ZeroVector;
 	TargetPrimitiveComponent = NULL;
 
 	CanCharacterStepUpOn = ECB_No;
@@ -287,12 +289,12 @@ void UVRRootComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, 
 		}
 		else
 		{
-			curCameraRot = FRotator(0.0f, 0.0f, 0.0f);// = FRotator::ZeroRotator;
-			curCameraLoc = FVector(0.0f, 0.0f, 0.0f);//FVector::ZeroVector;
+			curCameraRot = FRotator::ZeroRotator;
+			curCameraLoc = FVector::ZeroVector;
 		}
 
 		// Can adjust the relative tolerances to remove jitter and some update processing
-		if (!(lastCameraLoc - curCameraLoc).IsNearlyZero(0.01f) || !(lastCameraRot - curCameraRot).IsNearlyZero(0.01f))
+		if (!(curCameraLoc - lastCameraLoc).IsNearlyZero(0.01f) || !(curCameraRot - lastCameraRot).IsNearlyZero(0.01f))
 		{
 			lastCameraLoc = curCameraLoc;
 			lastCameraRot = curCameraRot;
@@ -301,7 +303,7 @@ void UVRRootComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, 
 			// Also calculate vector of movement for the movement component
 			FVector LastPosition = OffsetComponentToWorld.GetLocation();
 			OnUpdateTransform(EUpdateTransformFlags::None, ETeleportType::None);
-			DifferenceFromLastFrame = (OffsetComponentToWorld.GetLocation() - LastPosition).GetSafeNormal2D();
+			DifferenceFromLastFrame = (OffsetComponentToWorld.GetLocation() - LastPosition);// .GetSafeNormal2D();
 		}
 		else
 			bHadRelativeMovement = false;
@@ -326,11 +328,13 @@ void UVRRootComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, 
 }
 
 
-void UVRRootComponent::GenerateOffsetToWorld()
+void UVRRootComponent::GenerateOffsetToWorld(bool bUpdateBounds)
 {
 	FRotator CamRotOffset(0.0f, curCameraRot.Yaw, 0.0f);
 	OffsetComponentToWorld = FTransform(CamRotOffset.Quaternion(), FVector(curCameraLoc.X, curCameraLoc.Y, CapsuleHalfHeight) + CamRotOffset.RotateVector(VRCapsuleOffset), FVector(1.0f)) * ComponentToWorld;
-	UpdateBounds();
+	
+	if(bUpdateBounds)
+		UpdateBounds();
 }
 
 void UVRRootComponent::SendPhysicsTransform(ETeleportType Teleport)

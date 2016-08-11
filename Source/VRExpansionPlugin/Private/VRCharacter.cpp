@@ -82,8 +82,8 @@ bool AVRCharacter::TeleportTo(const FVector& DestLocation, const FRotator& DestR
 			RightMotionController->PostTeleportMoveGrippedActors();
 
 		// Regenerate the capsule offset location
-		//if (VRRootReference)
-		//	VRRootReference->GenerateOffsetToWorld();
+		if (VRRootReference)
+			VRRootReference->GenerateOffsetToWorld();
 	}
 
 	return bTeleportSucceeded;

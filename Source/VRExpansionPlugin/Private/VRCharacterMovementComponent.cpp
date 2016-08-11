@@ -64,12 +64,12 @@ FVector UVRCharacterMovementComponent::ComputeSlideVector(const FVector& Delta, 
 	FVector Result = FVector::ZeroVector;
 	if (!bConstrainToPlane)
 	{
-		Result = (FVector::VectorPlaneProject(Delta, Normal) * Time) * 0.1f;
+		Result = (FVector::VectorPlaneProject(Delta, Normal) * Time);// *0.5f;
 	}
 	else
 	{
 		const FVector ProjectedNormal = ConstrainNormalToPlane(Normal);
-		Result = (FVector::VectorPlaneProject(Delta, ProjectedNormal) * Time) * 0.1f;
+		Result = (FVector::VectorPlaneProject(Delta, ProjectedNormal) * Time);// *0.5f;
 	}
 
 
@@ -289,7 +289,7 @@ void UVRCharacterMovementComponent::ServerMoveVR_Implementation(
 		{
 			VRRootCapsule->curCameraLoc = CapsuleLoc;
 			VRRootCapsule->curCameraRot = FRotator(0.0f, FRotator::DecompressAxisFromByte(CapsuleYaw), 0.0f);
-			VRRootCapsule->GenerateOffsetToWorld();
+			VRRootCapsule->GenerateOffsetToWorld(false);
 		}
 
 		MoveAutonomous(TimeStamp, DeltaTime, MoveFlags, Accel);
@@ -419,13 +419,9 @@ void UVRCharacterMovementComponent::CallServerMoveVR
 *
 */
 
-
-
-
 void UVRCharacterMovementComponent::PhysWalking(float deltaTime, int32 Iterations)
 {
 	SCOPE_CYCLE_COUNTER(STAT_CharPhysWalking);
-
 
 	if (deltaTime < MIN_TICK_TIME)
 	{
@@ -828,7 +824,11 @@ void UVRCharacterMovementComponent::ReplicateMoveToServer(float DeltaTime, const
 		SCOPE_CYCLE_COUNTER(STAT_CharacterMovementCombineNetMove);
 
 		// Only combine and move back to the start location if we don't move back in to a spot that would make us collide with something new.
-		const FVector OldStartLocation = VRRootCapsule->GetVROffsetFromLocationAndRotation(ClientData->PendingMove->GetRevertedLocation(), ClientData->PendingMove->StartRotation.Quaternion());
+		FVector OldStartLocation = ClientData->PendingMove->GetRevertedLocation();
+		
+		if(VRRootCapsule)
+			OldStartLocation = VRRootCapsule->GetVROffsetFromLocationAndRotation(ClientData->PendingMove->GetRevertedLocation(), ClientData->PendingMove->StartRotation.Quaternion());
+
 		if (!OverlapTest(OldStartLocation, ClientData->PendingMove->StartRotation.Quaternion(), UpdatedComponent->GetCollisionObjectType(), GetPawnCapsuleCollisionShape(SHRINK_None), CharacterOwner))
 		{
 			FScopedMovementUpdate ScopedMovementUpdate(UpdatedComponent, EScopedUpdate::DeferredUpdates);
@@ -917,9 +917,6 @@ void UVRCharacterMovementComponent::ReplicateMoveToServer(float DeltaTime, const
 			}
 		}
 
-
-		UE_LOG(LogTemp, Warning, TEXT("Replicating Move"));
-
 		ClientData->ClientUpdateTime = GetWorld()->TimeSeconds;
 
 		UE_LOG(LogNetPlayerMovement, Verbose, TEXT("Client ReplicateMove Time %f Acceleration %s Position %s DeltaTime %f"),
@@ -974,17 +971,15 @@ void UVRCharacterMovementComponent::TickComponent(float DeltaTime, enum ELevelTi
 			FHitResult OutHit;
 			FCollisionQueryParams Params("RelativeMovementSweep", false, VRRootCapsule->GetOwner());
 			FCollisionResponseParams ResponseParam;
+		
 			VRRootCapsule->InitSweepCollisionParams(Params, ResponseParam);
-			bool bBlockingHit = GetWorld()->SweepSingleByChannel(OutHit, VRRootCapsule->GetVRLocation(), VRRootCapsule->GetVRLocation() + VRRootCapsule->DifferenceFromLastFrame, FQuat(0.0f, 0.0f, 0.0f, 1.0f), VRRootCapsule->GetCollisionObjectType(), VRRootCapsule->GetCollisionShape(), Params, ResponseParam);
+
+			bool bBlockingHit = GetWorld()->SweepSingleByChannel(OutHit, VRRootCapsule->GetVRLocation() - VRRootCapsule->DifferenceFromLastFrame, VRRootCapsule->GetVRLocation(), FQuat(0.0f, 0.0f, 0.0f, 1.0f), VRRootCapsule->GetCollisionObjectType(), VRRootCapsule->GetCollisionShape(), Params, ResponseParam);
 
 			// If we had a valid blocking hit
-			if (OutHit.Component.IsValid() && !OutHit.Component->IsSimulatingPhysics())
+			if (bBlockingHit && OutHit.Component.IsValid() && !OutHit.Component->IsSimulatingPhysics())
 			{
-				if (bBlockingHit) // Cancel for simulating physics on the component
-				{
-					// Add the relative movement into the move for this frame to back us out and lower the strength to prevent sliding
-					AddInputVector(VRRootCapsule->DifferenceFromLastFrame * WallRepulsionMultiplier);
-				}
+				AddInputVector(VRRootCapsule->DifferenceFromLastFrame.GetSafeNormal2D() * WallRepulsionMultiplier);// (WallRepulsionMultiplier / 2));
 			}			
 		}
 	}
