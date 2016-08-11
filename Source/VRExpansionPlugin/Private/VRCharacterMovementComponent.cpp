@@ -59,6 +59,28 @@ namespace CharacterMovementComponentStatics
 // void UCharacterMovementComponent::ApplyRepulsionForce(float DeltaSeconds) ???? check for capsule hit location being correct
 
 
+FVector UVRCharacterMovementComponent::ComputeSlideVector(const FVector& Delta, const float Time, const FVector& Normal, const FHitResult& Hit) const
+{
+	FVector Result = FVector::ZeroVector;
+	if (!bConstrainToPlane)
+	{
+		Result = (FVector::VectorPlaneProject(Delta, Normal) * Time) * 0.1f;
+	}
+	else
+	{
+		const FVector ProjectedNormal = ConstrainNormalToPlane(Normal);
+		Result = (FVector::VectorPlaneProject(Delta, ProjectedNormal) * Time) * 0.1f;
+	}
+
+
+	// prevent boosting up slopes
+	if (IsFalling())
+	{
+		Result = HandleSlopeBoosting(Result, Delta, Time, Normal, Hit);
+	}
+
+	return Result;
+}
 
 bool UVRCharacterMovementComponent::CanDelaySendingMove(const FSavedMovePtr& NewMove)
 {
@@ -800,7 +822,7 @@ void UVRCharacterMovementComponent::ReplicateMoveToServer(float DeltaTime, const
 
 	// see if the two moves could be combined
 	// do not combine moves which have different TimeStamps (before and after reset).
-	///*
+	/*
 	if (ClientData->PendingMove.IsValid() && !ClientData->PendingMove->bOldTimeStampBeforeReset && ClientData->PendingMove->CanCombineWith(NewMove, CharacterOwner, ClientData->MaxMoveDeltaTime * CharacterOwner->GetActorTimeDilation()))
 	{
 		SCOPE_CYCLE_COUNTER(STAT_CharacterMovementCombineNetMove);
@@ -814,7 +836,7 @@ void UVRCharacterMovementComponent::ReplicateMoveToServer(float DeltaTime, const
 
 			// to combine move, first revert pawn position to PendingMove start position, before playing combined move on client
 			const bool bNoCollisionCheck = true;
-			UpdatedComponent->SetWorldLocationAndRotation(ClientData->PendingMove->GetRevertedLocation()/*OldStartLocation*/, ClientData->PendingMove->StartRotation, false);
+			UpdatedComponent->SetWorldLocationAndRotation(ClientData->PendingMove->GetRevertedLocation(), ClientData->PendingMove->StartRotation, false);
 			Velocity = ClientData->PendingMove->StartVelocity;
 
 			SetBase(ClientData->PendingMove->StartBase.Get(), ClientData->PendingMove->StartBoneName);
@@ -847,7 +869,7 @@ void UVRCharacterMovementComponent::ReplicateMoveToServer(float DeltaTime, const
 		{
 			//UE_LOG(LogNet, Log, TEXT("Not combining move, would collide at start location"));
 		}
-	}//*/
+	}*/
 
 	// Acceleration should match what we send to the server, plus any other restrictions the server also enforces (see MoveAutonomous).
 	Acceleration = NewMove->Acceleration.GetClampedToMaxSize(GetMaxAcceleration());

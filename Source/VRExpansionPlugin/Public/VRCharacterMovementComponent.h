@@ -59,6 +59,7 @@ public:
 		if (VRRootCapsule->bHadRelativeMovement)
 			bForceSendMovementThisFrame = true;
 	}*/
+
 	// Set to false currently, need to change based on the move properties
 	bool CanDelaySendingMove(const FSavedMovePtr& NewMove) override;
 
@@ -104,6 +105,9 @@ public:
 	{
 		return RootMotionParams.bHasRootMotion;
 	}*/
+
+	// Tone down sliding for VR, sickness inducing
+	FVector ComputeSlideVector(const FVector& Delta, const float Time, const FVector& Normal, const FHitResult& Hit) const override;
 
 	// Modify for correct location
 	void ApplyRepulsionForce(float DeltaSeconds) override;
