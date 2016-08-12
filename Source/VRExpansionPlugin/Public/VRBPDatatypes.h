@@ -22,6 +22,7 @@ public:
 	FORCEINLINE void SetRotation(FRotator NewRot)
 	{
 		YawPitchINT = (FRotator::CompressAxisToShort(NewRot.Yaw) << 16) | FRotator::CompressAxisToShort(NewRot.Pitch);
+		RollBYTE = FRotator::CompressAxisToByte(NewRot.Roll);
 	}
 
 	FORCEINLINE FRotator GetRotation()
