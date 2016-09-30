@@ -1858,27 +1858,27 @@ void UVRCharacterMovementComponent::VisualizeMovement() const
 
 	// Position
 	{
-		const FColor DebugColor = FColor::White;
+		/*const FColor DebugColor = FColor::White;
 		const FVector DebugLocation = TopOfCapsule + FVector(0.f, 0.f, HeightOffset);
 		FString DebugText = FString::Printf(TEXT("Position: %s"), *GetActorLocation().ToCompactString());
-		DrawDebugString(GetWorld(), DebugLocation, DebugText, nullptr, DebugColor, 0.f, true);
+		DrawDebugString(GetWorld(), DebugLocation, DebugText, nullptr, DebugColor, 0.f, true);*/
 	}
 
 	// Velocity
 	{
-		const FColor DebugColor = FColor::Green;
+		/*const FColor DebugColor = FColor::Green;
 		HeightOffset += 15.f;
 		const FVector DebugLocation = TopOfCapsule + FVector(0.f, 0.f, HeightOffset);
 		DrawDebugDirectionalArrow(GetWorld(), DebugLocation, DebugLocation + Velocity,
 			100.f, DebugColor, false, -1.f, (uint8)'\000', 10.f);
 
 		FString DebugText = FString::Printf(TEXT("Velocity: %s (Speed: %.2f)"), *Velocity.ToCompactString(), Velocity.Size());
-		DrawDebugString(GetWorld(), DebugLocation + FVector(0.f, 0.f, 5.f), DebugText, nullptr, DebugColor, 0.f, true);
+		DrawDebugString(GetWorld(), DebugLocation + FVector(0.f, 0.f, 5.f), DebugText, nullptr, DebugColor, 0.f, true);*/
 	}
 
 	// Acceleration
 	{
-		const FColor DebugColor = FColor::Yellow;
+		/*const FColor DebugColor = FColor::Yellow;
 		HeightOffset += 15.f;
 		const float MaxAccelerationLineLength = 200.f;
 		const float CurrentMaxAccel = GetMaxAcceleration();
@@ -1889,22 +1889,22 @@ void UVRCharacterMovementComponent::VisualizeMovement() const
 			25.f, DebugColor, false, -1.f, (uint8)'\000', 8.f);
 
 		FString DebugText = FString::Printf(TEXT("Acceleration: %s"), *Acceleration.ToCompactString());
-		DrawDebugString(GetWorld(), DebugLocation + FVector(0.f, 0.f, 5.f), DebugText, nullptr, DebugColor, 0.f, true);
+		DrawDebugString(GetWorld(), DebugLocation + FVector(0.f, 0.f, 5.f), DebugText, nullptr, DebugColor, 0.f, true);*/
 	}
 
 	// Movement Mode
 	{
-		const FColor DebugColor = FColor::Blue;
+		/*const FColor DebugColor = FColor::Blue;
 		HeightOffset += 20.f;
 		const FVector DebugLocation = TopOfCapsule + FVector(0.f, 0.f, HeightOffset);
 		FString DebugText = FString::Printf(TEXT("MovementMode: %s"), *GetMovementName());
-		DrawDebugString(GetWorld(), DebugLocation, DebugText, nullptr, DebugColor, 0.f, true);
+		DrawDebugString(GetWorld(), DebugLocation, DebugText, nullptr, DebugColor, 0.f, true);*/
 	}
 
 	// Root motion (additive)
 	if (CurrentRootMotion.HasAdditiveVelocity())
 	{
-		const FColor DebugColor = FColor::Cyan;
+		/*const FColor DebugColor = FColor::Cyan;
 		HeightOffset += 15.f;
 		const FVector DebugLocation = TopOfCapsule + FVector(0.f, 0.f, HeightOffset);
 
@@ -1916,17 +1916,17 @@ void UVRCharacterMovementComponent::VisualizeMovement() const
 
 		FString DebugText = FString::Printf(TEXT("RootMotionAdditiveVelocity: %s (Speed: %.2f)"),
 			*CurrentAdditiveVelocity.ToCompactString(), CurrentAdditiveVelocity.Size());
-		DrawDebugString(GetWorld(), DebugLocation + FVector(0.f, 0.f, 5.f), DebugText, nullptr, DebugColor, 0.f, true);
+		DrawDebugString(GetWorld(), DebugLocation + FVector(0.f, 0.f, 5.f), DebugText, nullptr, DebugColor, 0.f, true);*/
 	}
 
 	// Root motion (override)
 	if (CurrentRootMotion.HasOverrideVelocity())
 	{
-		const FColor DebugColor = FColor::Green;
+		/*const FColor DebugColor = FColor::Green;
 		HeightOffset += 15.f;
 		const FVector DebugLocation = TopOfCapsule + FVector(0.f, 0.f, HeightOffset);
 		FString DebugText = FString::Printf(TEXT("Has Override RootMotion"));
-		DrawDebugString(GetWorld(), DebugLocation, DebugText, nullptr, DebugColor, 0.f, true);
+		DrawDebugString(GetWorld(), DebugLocation, DebugText, nullptr, DebugColor, 0.f, true);*/
 	}
 #endif // !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 }
