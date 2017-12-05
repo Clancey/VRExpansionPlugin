@@ -281,9 +281,6 @@ void UVRLeverComponent::OnGrip_Implementation(UGripMotionControllerComponent * G
 			case EVRInteractibleLeverAxis::Axis_Y:
 				InitialGripRot = FMath::RadiansToDegrees(FMath::Atan2(InitialInteractorLocation.Z, InitialInteractorLocation.X));
 				break;
-			case EVRInteractibleLeverAxis::Axis_Z:
-				InitialGripRot = FMath::RadiansToDegrees(FMath::Atan2(InitialInteractorLocation.X, InitialInteractorLocation.Y));
-				break;
 			default:break;
 			}
 
