@@ -25,7 +25,9 @@ enum class EVRInteractibleLeverAxis : uint8
 {
 	Axis_X,
 	Axis_Y,
-	Axis_XY
+	Axis_Z,
+	Axis_XY,
+	Axis_XZ
 };
 
 UENUM(Blueprintable)
@@ -106,6 +108,8 @@ class VREXPANSIONPLUGIN_API UVRLeverComponent : public UStaticMeshComponent, pub
 	float LastDeltaAngle;
 	FTransform InitialRelativeTransform;
 	FVector InitialInteractorLocation;
+	FVector IntialInteractionLocationLimitedYaw;
+	FVector IntialInteractionLocationLimitedPitch;
 	FVector InitialInteractorDropLocation;
 	float InitialGripRot;
 	float RotAtGrab;
@@ -115,12 +119,19 @@ class VREXPANSIONPLUGIN_API UVRLeverComponent : public UStaticMeshComponent, pub
 
 	float CalcAngle(EVRInteractibleLeverAxis AxisToCalc, FVector CurInteractorLocation)
 	{
-		float ReturnAxis = 0.0f;
-
-		if (AxisToCalc == EVRInteractibleLeverAxis::Axis_X)
+		switch (AxisToCalc)
+		{
+		case EVRInteractibleLeverAxis::Axis_X:
+		{
 			ReturnAxis = FMath::RadiansToDegrees(FMath::Atan2(CurInteractorLocation.Y, CurInteractorLocation.Z)) - InitialGripRot;
-		else
+		}break;
+		case EVRInteractibleLeverAxis::Axis_Y:
+		{
 			ReturnAxis = FMath::RadiansToDegrees(FMath::Atan2(CurInteractorLocation.Z, CurInteractorLocation.X)) - InitialGripRot;
+		}break;
+		default:
+		{}break;
+		}
 
 		// Ignore rotations that would flip the angle of the lever to the other side, with a 90 degree allowance
 		if (!FMath::IsNearlyZero(LastDeltaAngle) && FMath::Sign(FRotator::NormalizeAxis(RotAtGrab + ReturnAxis)) != FMath::Sign(LastDeltaAngle) && FMath::Abs(LastDeltaAngle) > 90.0f)
@@ -199,7 +210,11 @@ class VREXPANSIONPLUGIN_API UVRLeverComponent : public UStaticMeshComponent, pub
 	{
 		float Angle;
 
-		if (LeverRotationAxis == EVRInteractibleLeverAxis::Axis_XY)
+		switch (LeverRotationAxis)
+		{
+		case EVRInteractibleLeverAxis::Axis_XY:
+		case EVRInteractibleLeverAxis::Axis_XZ:
+		case EVRInteractibleLeverAxis::Axis_Z:
 		{
 			// Manually calculating the angle here because RotationBetween() from FQuat uses Yaw/Pitch so roll would be incorrect
 			FVector qAxis;
@@ -210,22 +225,24 @@ class VREXPANSIONPLUGIN_API UVRLeverComponent : public UStaticMeshComponent, pub
 			CurrentLeverAngle = FMath::RoundToFloat(FMath::RadiansToDegrees(qAngle));
 			qAxis.Z = 0.0f; // Doing 2D axis values
 			CurrentLeverForwardVector = -qAxis;
-		}
-		else
+
+		}break;
+		case EVRInteractibleLeverAxis::Axis_X:
 		{
-			// Faster method to get the angle
 			Angle = GetAxisValue((CurrentRelativeTransform * InitialRelativeTransform.Inverse()).Rotator().GetNormalized());
 
-			if (LeverRotationAxis == EVRInteractibleLeverAxis::Axis_X)
-			{
-				CurrentLeverAngle = FMath::RoundToFloat(Angle);
-				CurrentLeverForwardVector = FVector(FMath::Sign(Angle), 0.0f, 0.0f);
-			}
-			else
-			{
-				CurrentLeverAngle = FMath::RoundToFloat(Angle);
-				CurrentLeverForwardVector = FVector(0.0f, FMath::Sign(Angle), 0.0f);
-			}
+			CurrentLeverAngle = FMath::RoundToFloat(Angle);
+			CurrentLeverForwardVector = FVector(FMath::Sign(Angle), 0.0f, 0.0f);
+		}break;
+		case EVRInteractibleLeverAxis::Axis_Y:
+		{
+			Angle = GetAxisValue((CurrentRelativeTransform * InitialRelativeTransform.Inverse()).Rotator().GetNormalized());
+
+			CurrentLeverAngle = FMath::RoundToFloat(Angle);
+			CurrentLeverForwardVector = FVector(0.0f, FMath::Sign(Angle), 0.0f);
+		}break;
+		default:
+		{}break;
 		}
 	}
 
@@ -609,6 +626,8 @@ class VREXPANSIONPLUGIN_API UVRLeverComponent : public UStaticMeshComponent, pub
 				return CheckRotation.Roll; break;
 			case EVRInteractibleLeverAxis::Axis_Y:
 				return CheckRotation.Pitch; break;
+			case EVRInteractibleLeverAxis::Axis_Z:
+				return CheckRotation.Yaw; break;
 			default:return 0.0f; break;
 			}
 		}
@@ -623,6 +642,8 @@ class VREXPANSIONPLUGIN_API UVRLeverComponent : public UStaticMeshComponent, pub
 				vec.Roll = SetValue; break;
 			case EVRInteractibleLeverAxis::Axis_Y:
 				vec.Pitch = SetValue; break;
+			case EVRInteractibleLeverAxis::Axis_Z:
+				vec.Yaw = SetValue; break;
 			default:break;
 			}
 
@@ -638,6 +659,8 @@ class VREXPANSIONPLUGIN_API UVRLeverComponent : public UStaticMeshComponent, pub
 				vec.Roll = SetValue; break;
 			case EVRInteractibleLeverAxis::Axis_Y:
 				vec.Pitch = SetValue; break;
+			case EVRInteractibleLeverAxis::Axis_Z:
+				vec.Yaw = -SetValue; break;
 			default:break;
 			}
 
