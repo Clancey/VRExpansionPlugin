@@ -196,7 +196,11 @@ private:
 UCLASS(Blueprintable, meta = (BlueprintSpawnableComponent), ClassGroup = (VRExpansionPlugin))
 class VREXPANSIONPLUGIN_API UVRLogComponent : public UActorComponent
 {
-	GENERATED_UCLASS_BODY()
+	GENERATED_BODY()
+
+public:
+	UVRLogComponent(const FObjectInitializer& ObjectInitializer);
+
 
 	~UVRLogComponent();
 

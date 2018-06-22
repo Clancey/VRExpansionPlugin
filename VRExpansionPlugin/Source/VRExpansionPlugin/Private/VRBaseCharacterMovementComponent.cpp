@@ -819,11 +819,6 @@ void UVRBaseCharacterMovementComponent::SetReplicatedMovementMode(EVRConjoinedMo
 	VRReplicatedMovementMode = NewMovementMode;
 }
 
-/*void UVRBaseCharacterMovementComponent::ReplicateMoveToServer(float DeltaTime, const FVector& NewAcceleration)
-{
-	Super::ReplicateMoveToServer(DeltaTime, NewAcceleration);
-}*/
-
 /*void UVRBaseCharacterMovementComponent::SendClientAdjustment()
 {
 	if (!HasValidData())
@@ -1035,6 +1030,37 @@ void FSavedMove_VRBaseCharacter::SetInitialPosition(ACharacter* C)
 	FSavedMove_Character::SetInitialPosition(C);
 }
 
+void FSavedMove_VRBaseCharacter::CombineWith(const FSavedMove_Character* OldMove, ACharacter* InCharacter, APlayerController* PC, const FVector& OldStartLocation)
+{
+	UCharacterMovementComponent* CharMovement = InCharacter->GetCharacterMovement();
+	
+	// to combine move, first revert pawn position to PendingMove start position, before playing combined move on client
+	CharMovement->UpdatedComponent->SetWorldLocationAndRotation(OldStartLocation, OldMove->StartRotation, false, nullptr, CharMovement->GetTeleportType());
+	CharMovement->Velocity = OldMove->StartVelocity;
+
+	CharMovement->SetBase(OldMove->StartBase.Get(), OldMove->StartBoneName);
+	CharMovement->CurrentFloor = OldMove->StartFloor;
+
+	// Now that we have reverted to the old position, prepare a new move from that position,
+	// using our current velocity, acceleration, and rotation, but applied over the combined time from the old and new move.
+
+	// Combine times for both moves
+	DeltaTime += OldMove->DeltaTime;
+
+	//FSavedMove_VRBaseCharacter * BaseSavedMove = (FSavedMove_VRBaseCharacter *)NewMove.Get();
+	FSavedMove_VRBaseCharacter * BaseSavedMovePending = (FSavedMove_VRBaseCharacter *)OldMove;
+
+	if (/*BaseSavedMove && */BaseSavedMovePending)
+	{
+		LFDiff.X += BaseSavedMovePending->LFDiff.X;
+		LFDiff.Y += BaseSavedMovePending->LFDiff.Y;
+	}
+
+	// Roll back jump force counters. SetInitialPosition() below will copy them to the saved move.
+	// Changes in certain counters like JumpCurrentCount don't allow move combining, so no need to roll those back (they are the same).
+	InCharacter->JumpForceTimeRemaining = OldMove->JumpForceTimeRemaining;
+	InCharacter->JumpKeyHoldTime = OldMove->JumpKeyHoldTime;
+}
 
 void FSavedMove_VRBaseCharacter::PostUpdate(ACharacter* C, EPostUpdateMode PostUpdateMode)
 {

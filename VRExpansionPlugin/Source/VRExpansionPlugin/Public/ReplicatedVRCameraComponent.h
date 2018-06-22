@@ -14,8 +14,11 @@ class AVRBaseCharacter;
 UCLASS(Blueprintable, meta = (BlueprintSpawnableComponent), ClassGroup = VRExpansionLibrary)
 class VREXPANSIONPLUGIN_API UReplicatedVRCameraComponent : public UCameraComponent
 {
-	GENERATED_UCLASS_BODY()
-		//	~UGripMotionControllerComponent();
+	GENERATED_BODY()
+
+public:
+	UReplicatedVRCameraComponent(const FObjectInitializer& ObjectInitializer);
+
 
 	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction *ThisTickFunction) override;
 	//virtual void PreReplication(IRepChangedPropertyTracker & ChangedPropertyTracker) override;
@@ -38,7 +41,7 @@ class VREXPANSIONPLUGIN_API UReplicatedVRCameraComponent : public UCameraCompone
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ReplicatedCamera")
 		uint32 bAutoSetLockToHmd : 1;
 
-	UFUNCTION(BlueprintCallable, Category = Camera)
+	//UFUNCTION(BlueprintCallable, Category = Camera)
 		virtual void GetCameraView(float DeltaTime, FMinimalViewInfo& DesiredView) override;
 
 	UPROPERTY(EditDefaultsOnly, ReplicatedUsing = OnRep_ReplicatedCameraTransform, Category = "ReplicatedCamera|Networking")
