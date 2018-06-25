@@ -1206,7 +1206,7 @@ void UVRBaseCharacterMovementComponent::SmoothClientPosition_UpdateVRVisuals()
 		{
 			// Erased most of the code here, check back in later
 			const FVector NewRelLocation = ClientData->MeshRotationOffset.UnrotateVector(ClientData->MeshTranslationOffset) + CharacterOwner->GetBaseTranslationOffset();
-			Basechar->NetSmoother->SetRelativeLocation(NewRelLocation, false, nullptr, GetTeleportType());
+			Basechar->NetSmoother->SetRelativeLocation(NewRelLocation);
 		}
 		else if (NetworkSmoothingMode == ENetworkSmoothingMode::Exponential)
 		{
