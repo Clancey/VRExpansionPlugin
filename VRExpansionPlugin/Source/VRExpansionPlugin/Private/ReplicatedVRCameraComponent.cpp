@@ -111,10 +111,9 @@ void UReplicatedVRCameraComponent::TickComponent(float DeltaTime, enum ELevelTic
 
 	// #TODO: 4.18 - use new late update code if required
 
-	// Don't do any of the below if we aren't the host
+	// Don't do any of the below if we aren't the authority
 	if (bHasAuthority)
 	{
-
 		// For non view target positional updates (third party and the like)
 		if (bSetPositionDuringTick && bLockToHmd && GEngine->XRSystem.IsValid() && GEngine->XRSystem->IsHeadTrackingAllowed())
 		{
@@ -199,15 +198,17 @@ void UReplicatedVRCameraComponent::TickComponent(float DeltaTime, enum ELevelTic
 
 void UReplicatedVRCameraComponent::GetCameraView(float DeltaTime, FMinimalViewInfo& DesiredView)
 {
+	bool bIsLocallyControlled = IsLocallyControlled();
+
 	if (bAutoSetLockToHmd)
 	{
-		if (IsLocallyControlled())
+		if (bIsLocallyControlled)
 			bLockToHmd = true;
 		else
 			bLockToHmd = false;
 	}
 
-	if (GEngine && GEngine->XRSystem.IsValid() && GetWorld() && GetWorld()->WorldType != EWorldType::Editor)
+	if (bIsLocallyControlled && GEngine && GEngine->XRSystem.IsValid() && GetWorld() && GetWorld()->WorldType != EWorldType::Editor)
 	{
 		IXRTrackingSystem* XRSystem = GEngine->XRSystem.Get();
 		auto XRCamera = XRSystem->GetXRCamera();
