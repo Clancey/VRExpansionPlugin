@@ -221,6 +221,14 @@ void UGripMotionControllerComponent::BeginPlay()
 	Super::BeginPlay();
 }
 
+void UGripMotionControllerComponent::CreateRenderState_Concurrent()
+{
+	Super::CreateRenderState_Concurrent();
+	/*GripRenderThreadRelativeTransform = GetRelativeTransform();
+	GripRenderThreadComponentScale = GetComponentScale();*/
+	GripRenderThreadProfileTransform = CurrentControllerProfileTransform;
+}
+
 void UGripMotionControllerComponent::SendRenderTransform_Concurrent()
 {
 	GripRenderThreadRelativeTransform = GetRelativeTransform();
@@ -2733,7 +2741,7 @@ void UGripMotionControllerComponent::TickComponent(float DeltaTime, enum ELevelT
 
 			if (bNewTrackedState)
 			{
-				SetRelativeTransform(CurrentControllerProfileTransform * FTransform(Orientation, Position, this->RelativeScale3D));
+				SetRelativeTransform(FTransform(Orientation, Position, this->RelativeScale3D));
 				//SetRelativeLocationAndRotation(Position, Orientation);
 			}
 

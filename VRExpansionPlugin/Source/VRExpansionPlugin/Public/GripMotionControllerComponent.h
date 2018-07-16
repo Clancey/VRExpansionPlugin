@@ -146,6 +146,7 @@ public:
 
 protected:
 	//~ Begin UActorComponent Interface.
+	virtual void CreateRenderState_Concurrent() override;
 	virtual void SendRenderTransform_Concurrent() override;
 	//~ End UActorComponent Interface.
 
