@@ -7,7 +7,7 @@
 UVRDialComponent::UVRDialComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	this->bGenerateOverlapEvents = true;
+	this->SetGenerateOverlapEvents(true);
 	this->PrimaryComponentTick.bStartWithTickEnabled = false;
 	PrimaryComponentTick.bCanEverTick = true;
 

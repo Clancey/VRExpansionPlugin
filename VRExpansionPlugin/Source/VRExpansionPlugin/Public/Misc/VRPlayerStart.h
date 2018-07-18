@@ -5,6 +5,7 @@
 #include "GameFramework/PlayerStart.h"
 #include "Engine/NavigationObjectBase.h"
 #include "Components/SceneComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/BillboardComponent.h"
 #include "VRPlayerStart.generated.h"
 
